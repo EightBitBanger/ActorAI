@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <map>
 #include <iomanip>
-
 
 std::vector<std::string> Explode(const std::string& value, const char character) {
 	std::vector<std::string> result;
@@ -23,14 +23,55 @@ std::vector<std::string> Explode(const std::string& value, const char character)
 }
 
 
+std::vector<std::pair<unsigned int, std::string>> lexicon;
+
 
 std::vector<float> encode_string(const std::string& input_string) {
     std::vector<float> encoded_floats;
     
-    for (unsigned int i=0; i < input_string.size(); i++) {
-        uint8_t char_code = input_string[i];
-        float normalized_value = static_cast<float>(char_code) / static_cast<float>(0xff);
+    std::vector<std::string> words = Explode(input_string, ' ');
+    
+    unsigned int tokexIndex = 1;
+    
+    // Parse words
+    for (unsigned int i=0; i < words.size(); i++) {
+        
+        bool isFound = false;
+        
+        std::string word = words[i];
+        
+        unsigned int numberOfLexes = lexicon.size();
+        for (unsigned int a=0; a < numberOfLexes; a++) {
+            
+            std::pair<unsigned int, std::string> lexword = lexicon[a];
+            
+            // Word exists in the lexicon
+            if (lexword.second != word) 
+                continue;
+            
+            // Add existing word
+            unsigned int token = lexword.first;
+            
+            float normalized_value = static_cast<float>(token) / 128.0f;
+            encoded_floats.push_back(normalized_value);
+            
+            isFound = true;
+            break;
+        }
+        
+        if (isFound == true) 
+            continue;
+        
+        // Add new word
+        
+        std::pair<unsigned int, std::string> token(tokexIndex, word);
+        
+        float normalized_value = static_cast<float>(tokexIndex) / 128.0f;
+        
         encoded_floats.push_back(normalized_value);
+        
+        tokexIndex++;
+        
     }
     
     return encoded_floats;
@@ -41,11 +82,17 @@ std::vector<float> encode_string(const std::string& input_string) {
 std::string decode_string(const std::vector<float>& encoded_floats) {
     std::string decoded_string;
     
-    for (size_t i = 0; i < encoded_floats.size(); ++i) {
+    for (unsigned int i=0; i < encoded_floats.size(); i++) {
         
-        uint8_t char_code = std::round(encoded_floats[i] * 0xff);
+        unsigned int decodedValue = static_cast<unsigned int>(encoded_floats[i] * 128.0f);
         
-        decoded_string.push_back( char_code );
+        if ((decodedValue-1) > lexicon.size()) 
+            continue;
+        
+        std::pair<unsigned int, std::string> lexpair = lexicon[decodedValue - 1];
+        
+        decoded_string += lexpair.second + " ";
+        
     }
     
     return decoded_string;
@@ -66,105 +113,98 @@ int main() {
     NeuralNetwork nnet;
     
     // Add layers to the neural network
-    nnet.AddNeuralLayer(64, 8);
+    nnet.AddNeuralLayer(32, 1);
     
-    nnet.AddNeuralLayer(64, 64);
-    nnet.AddNeuralLayer(32, 64);
     nnet.AddNeuralLayer(32, 32);
     nnet.AddNeuralLayer(32, 32);
+    nnet.AddNeuralLayer(32, 32);
     
-    nnet.AddNeuralLayer(8, 32);
+    nnet.AddNeuralLayer(1, 32);
     
     
     // Train the model
     
-    TrainingSet tsa;
-    tsa.input  = encode_string("The     ");
-    tsa.target = encode_string("black   ");
+    std::cout << "Parsing..." << std::endl;
     
-    TrainingSet tsb;
-    tsb.input  = encode_string("black   ");
-    tsb.target = encode_string("cat     ");
-    
-    TrainingSet tsc;
-    tsc.input  = encode_string("cat     ");
-    tsc.target = encode_string("jumped  ");
-    
-    TrainingSet tsd;
-    tsd.input  = encode_string("jumped  ");
-    tsd.target = encode_string("over    ");
-    
-    TrainingSet tse;
-    tse.input  = encode_string("over    ");
-    tse.target = encode_string("the     ");
-    
-    TrainingSet tsf;
-    tsf.input  = encode_string("the     ");
-    tsf.target = encode_string("lazy    ");
-    
-    TrainingSet tsg;
-    tsg.input  = encode_string("lazy    ");
-    tsg.target = encode_string("dog     ");
-    
-    TrainingSet tsh;
-    tsh.input  = encode_string("dog     ");
-    tsh.target = encode_string("The     ");
+    std::string sourceText = "The black cat jumped over the lazy dog";
+    std::vector<std::string> sourceSplit = Explode(sourceText, ' ');
     
     std::vector<TrainingSet> trainingBook;
-    trainingBook.push_back(tsa);
-    trainingBook.push_back(tsb);
-    trainingBook.push_back(tsc);
-    trainingBook.push_back(tsd);
-    trainingBook.push_back(tse);
-    trainingBook.push_back(tsf);
-    trainingBook.push_back(tsg);
-    trainingBook.push_back(tsh);
+    
+    for (unsigned int i=0; i < sourceSplit.size() - 1; i++) {
+        
+        std::string wordA = sourceSplit[i];
+        std::string wordB = sourceSplit[i + 1];
+        
+        TrainingSet tsa;
+        tsa.input  = encode_string(wordA);
+        tsa.target = encode_string(wordB);
+        trainingBook.push_back(tsa);
+        
+    }
     
     
     
-    for (int epoch = 0; epoch < 128000; epoch++) {
+    std::cout << "Training..." << std::endl;
+    
+    for (int epoch = 0; epoch < 100; epoch++) {
         
         for (unsigned int i=0; i < trainingBook.size(); i++) 
             nnet.Train(trainingBook[i], 0.018f);
         
     }
     
-    
     // Test dataset
-    std::string reactivationText = "The     ";
+    std::string outputText = "The";
+    std::string prevText   = "The";
     
-    std::string outputText = "The     ";
+    std::cout << "Output" << std::endl;
     
-    for (unsigned int i=0; i < 10; i++) {
+    while(1) {
         
-        while(1) {
+        std::vector<float> dataset = encode_string(outputText);
+        
+        nnet.FeedForward(dataset);
+        std::vector<float> results =  nnet.GetResults();
+        
+        outputText = decode_string(results);
+        
+        std::string finalOutput = outputText;
+        
+        // Remove trailing spaces
+        finalOutput.erase( outputText.find_last_not_of(" \t\n\r\f\v") + 1 );
+        
+        // Check if the text has gone out of range
+        for (unsigned int a=0; a < outputText.size(); a++) {
             
-            std::vector<float> dataset = encode_string(outputText);
-            
-            nnet.FeedForward(dataset);
-            std::vector<float> results =  nnet.GetResults();
-            
-            outputText = decode_string(results);
-            
-            std::string finalOutput = outputText;
-            
-            // Remove trailing spaces
-            finalOutput.erase( outputText.find_last_not_of(" \t\n\r\f\v") + 1 );
-            
-            std::cout << finalOutput << " ";
-            
-            // Check if the text has gone out of range
-            for (unsigned int a=0; a < outputText.size(); a++) {
-                if (outputText[a] < 0x20) {
-                    
-                    outputText = reactivationText;
-                    
-                    break;
-                }
+            if ((outputText[a] >= 0x20) && (outputText[a] <= 0x7a)) {
+                
+                std::cout << outputText[a];
+                
+                if (prevText == outputText) 
+                    continue;
+                
+                
+                
+                TrainingSet trainingSet;
+                trainingSet.input  = encode_string(outputText);
+                trainingSet.target = encode_string(prevText);
+                
+                nnet.Train(trainingSet, 0.0001f);
+                
+                prevText = outputText;
+                prevText.resize(8, ' ');
+                
+                
+                
+                
+            } else {
                 
             }
             
         }
+        
+        std::cout << " ";
         
     }
     
@@ -172,5 +212,4 @@ int main() {
     
     return 0;
 }
-
 
